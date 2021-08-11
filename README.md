@@ -1,0 +1,2 @@
+# CDI_DELAY_COUNTER
+CDI 脈衝點火時間差顯示器
