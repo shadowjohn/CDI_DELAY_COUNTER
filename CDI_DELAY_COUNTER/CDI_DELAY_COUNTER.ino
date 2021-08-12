@@ -122,7 +122,7 @@ void loop() {
       if(checkZeroCounts>= 600000){ //超時，低於50rpm = 1200000 ,  1500rpm = 40000
         //直接輸出 9999
         checkZeroCounts = 9999;    
-        int show = (int)map(checkZeroCounts,1500,16000,40000,3750) / 10;    
+        int show = (int)(map(checkZeroCounts,1500,16000,40000,3750) / 100);    
         show=(show>9999)?9999:show;
         diaplayOnLed(show);      
         return;
@@ -142,7 +142,7 @@ void loop() {
   //讓 LED 不要刷的太快，太快眼睛跟不上字會黏在一起
   if (micros()-st > 55000) //550ms 眼睛才受的了
   {       
-    int show = (int)map(checkZeroCounts,1500,16000,40000,3750) / 10;    
+    int show = (int)(map(checkZeroCounts,1500,16000,40000,3750) / 100);    
     show=(show>9999)?9999:show;
     diaplayOnLed(show);          
     //在 TM1637 顯示   
