@@ -1,34 +1,44 @@
 #include <Arduino.h>
+//數位模組
+#include <TM1637.h>
 const int SensorPin = D3;  //Define Interrupt Pin (2 or 3 @ Arduino Uno)
 const int Purse_Pin = D6;  //產生訊號角
+#define CLK D5 
+#define DIO D4 
+TM1637 tm1637(CLK,DIO);
 //#define myPin D6
 //#define myPinBit (1<<myPin)
-volatile unsigned long C=micros(), rpm=0,RPM_DELAY=0, VR_RPM=100,duty_half=598802,isShowCount=0;
+volatile unsigned long C=micros(), rpm=0,RPM_DELAY=0, VR_RPM=100,duty=499999,isShowCount=0,RPM_START_TIME=0,CDI_DELAY=0;
 volatile bool CFLAG=false;
 volatile unsigned int VR_LOW = 999;
 volatile unsigned int VR_HIGH = 0;
 volatile unsigned long test = 0;
 //From : https://forum.arduino.cc/t/arduino-esp8266-faster-direct-port-write/407251/3
 #define myPinBit (1<<15)
-void countup() {
+void ICACHE_RAM_ATTR countup() {  //For newest version
+  //收到CDI點火，扣掉偵測到凸台RISING時間
+  //只要是Rising就是Fire 
+        
   if(CFLAG==false)
   {
     C=micros();
     RPM_DELAY=0;
-    rpm = 99999;
+    rpm = 99999;  
+    CDI_DELAY = micros() - RPM_START_TIME;        
   }
   else
   {
     RPM_DELAY=micros()-C;
-    rpm = 60000000UL / RPM_DELAY; 
+    rpm = 60000000UL / RPM_DELAY;    
   }
   CFLAG=!CFLAG;  
+  
 }
 
 void setup(){
-  delay(1000);
+  //delay(1000);
 
-  Serial.begin(115200);
+  Serial.begin(250000);
   Serial.println("Counting...");  
   pinMode(SensorPin, INPUT_PULLUP);
   pinMode(Purse_Pin, OUTPUT);
@@ -52,16 +62,16 @@ void loop() {
   if(VR_LOW!=999 && VR_HIGH!=0)
   {
     //自動修正VR上下限值
-    //HZ = map(VR,VR_LOW,VR_HIGH,1,250); //15000
-    HZ = map(VR,VR_LOW,VR_HIGH,1,500); //30000
+    HZ = map(VR,VR_LOW,VR_HIGH,1,250); //15000
+    //HZ = map(VR,VR_LOW,VR_HIGH,1,500); //30000
   }
   else
   {
-    //HZ = map(VR,9,1023,1,250); //初值 9~1023 , 15000rpm
-    HZ = map(VR,9,1023,1,500); //初值 30000rpm
+    HZ = map(VR,8,1023,1,250); //初值 8~1023 , 15000rpm
+    //HZ = map(VR,9,1023,1,500); //初值 30000rpm
   }
-  //VR_RPM = map(HZ,1,250,0,15000); //0~15000RPM
-  VR_RPM = map(HZ,1,500,0,30000); //0~15000RPM
+  VR_RPM = map(HZ,1,250,0,15000); //0~15000RPM
+  //VR_RPM = map(HZ,1,500,0,30000); //0~15000RPM
   
   /*
   參考：http://stm32-learning.blogspot.com/2014/05/arduino.html
@@ -83,43 +93,45 @@ void loop() {
   //analogWrite(D6,512); 
     
 
-  //if(isShowCount % 500==0)
+  if(isShowCount > 100==0 && RPM_DELAY == 0 )
   {
     display_rpm();    
-    //isShowCount=0;
+    isShowCount=0;
   }
 
   if(VR_RPM>35000)
   {
     return;
   }
-  duty_half = ((1000000/(VR_RPM/60.0)) ) / 2.0; //一正一負 (us)
-  if(duty_half>500000) return; //WTF
-  //From : https://roboticsbackend.com/arduino-fast-digitalwrite/
-  
-  digitalWrite(Purse_Pin,HIGH); //一個 digitalWrite 會 delay 3.4us
+  duty = ((1000000/(VR_RPM/60.0)) )/2; //一正一負 (us) on 10% off 90%
+  if(duty>500000) return; //WTF
+  //From : https://roboticsbackend.com/arduino-fast-digitalwrite/  
+  //開始了
+  digitalWrite(Purse_Pin,LOW);
+  RPM_START_TIME=micros();
+  digitalWrite(Purse_Pin,HIGH); //一個 digitalWrite 會 delay 3.4us  
   //WRITE_PERI_REG( 0x60000304, myPinBit ); //on
-  delayMicroseconds(duty_half);
+  delayMicroseconds((long)duty*((360-180)/360.0)); //29度~=30度 = 330/360 = 11/12
   digitalWrite(Purse_Pin,LOW);
   //WRITE_PERI_REG( 0x60000308, myPinBit ); //off
-  delayMicroseconds(duty_half);
-  //isShowCount++;
+  delayMicroseconds((long)duty*(180.0/360.0));
+  isShowCount++;
 }
 
 
 
 
 void display_rpm() {  
-  if(rpm > 30000 || VR_RPM > 30000) return;
+  //if(rpm > 30000 || VR_RPM > 30000) return;
+  if(duty>=500000) return;
   Serial.print("VR_LOW: ");
   Serial.print(VR_LOW);
   Serial.print(" , VR_HIGH: ");
   Serial.print(VR_HIGH);
-  Serial.print(" , RPM: ");
-  Serial.print(rpm);
+  Serial.print(" , CDI_DELAY: ");
+  Serial.print(CDI_DELAY);
   Serial.print(" , VR_RPM: ");  
   Serial.print(VR_RPM);
-  Serial.print(" , duty_half: ");  
-  Serial.println(duty_half);
-  
+  Serial.print(" , duty: ");  
+  Serial.println(duty);  
 }
