@@ -1,154 +1,116 @@
-//用來作排序的套件
-//數位模組
-#include <TM1637.h>
-//用來偵測 D1 腳抓脈衝凸台的訊號
+# 把 NSR 抓到凸台脈衝訊號(4P 裡的  青/黃)，到發現點火發生(4P 裡的 黑/黃) 的 轉速、fire_delay、角度，推到 mqtt 送去網頁看
+# Date : 2021-08-22
+# Author FB @田峻墉
+# Authro 羽山 (https://3wa.tw)
 
-unsigned long checkZeroCounts = 0; //用來檢查引擎是不是熄了，連續一段時間沒偵測到轉速， loop 就重來
+#include <ESP8266WiFi.h>
+#include "Adafruit_MQTT.h"
+#include "Adafruit_MQTT_Client.h"
+//用來偵測 D1 腳點火訊號 (接 黑/黃) 
+//用來偵測 D3 腳抓脈衝凸台的訊號 (接 青/黃)
 
-//範例：https://github.com/Seeed-Studio/Grove_4Digital_Display/blob/master/examples/DisplayNum/DisplayNum.ino
-//範例：https://github.com/Seeed-Studio/Grove_4Digital_Display/blob/master/examples/DisplayStr/DisplayStr.ino
-//用來處理 4 Digit-Diplay TM1637 的部分
-//給 4 Digit-Display TM1637 使用
-const int FIRE_SIG = D0; //偵測點火
-const int TO_SIG = D1; //凸台，脈衝
-#define CLK D4 
-#define DIO D5 
-TM1637 tm1637(CLK,DIO);
+const int FIRE_SIG = D1; //偵測點火
+const int TO_SIG = D3; //凸台，脈衝
+volatile unsigned long C=0, rpm=0, RPM_DELAY=0, FIRE_DELAY=0, C_old=0;
+volatile unsigned long COUNTS = 0; //每隔 100ms 送一筆資料到 mqtt
+volatile float FIRE_DEGREE;
+/************************* WiFi Access Point *********************************/
 
-unsigned long start = 0;
-unsigned long pulseCounts = 0;
-unsigned long st = 0; //用來紀錄時間序
+#define WLAN_SSID       "john"
+#define WLAN_PASS       "xxxxxxxxxxxxxxxxxxxxxxxx"
+
+#define AIO_SERVER      "3wa.tw"
+#define AIO_SERVERPORT  1883                   // use 8883 for SSL
+#define AIO_USERNAME    "john"
+#define AIO_KEY         "xxxxxxxxxxxxxxxxxxxxxxxx"
+WiFiClient client;
+Adafruit_MQTT_Client mqtt(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO_KEY);
+Adafruit_MQTT_Publish mqtt_mycdicounter = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/mycdicounter");
+
+void ICACHE_RAM_ATTR TO_SIG_FUNC() {  
+  //凸台起始偵測、rpm 計算  
+  //只要是Rising就是凸台剛出現
+  C=micros();
+  RPM_DELAY=C-C_old;
+  rpm = 60000000UL / RPM_DELAY;
+  C_old = C;
+}
+
+void ICACHE_RAM_ATTR FIRE_SIG_FUNC() {  
+  //點火出現，所以用點火的時間，減去凸台時間，得到 FIRE_DELAY
+  FIRE_DELAY = micros()-C;
+  FIRE_DEGREE = float(FIRE_DELAY) / float(RPM_DELAY) * 360;
+}
+void MQTT_connect() {
+  int8_t ret;
+
+  // Stop if already connected.
+  if (mqtt.connected()) {
+    return;
+  }
+
+  Serial.print("Connecting to MQTT... ");
+
+  uint8_t retries = 3;
+  while ((ret = mqtt.connect()) != 0) { // connect will return 0 for connected
+       Serial.println(mqtt.connectErrorString(ret));
+       Serial.println("Retrying MQTT connection in 5 seconds...");
+       mqtt.disconnect();
+       delay(5000);  // wait 5 seconds
+       retries--;
+       if (retries == 0) {
+         // basically die and wait for WDT to reset me
+         while (1);
+       }
+  }
+  Serial.println("MQTT Connected!");
+}
 
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);    
-
-  // 4 Digit-Display
-  tm1637.init();  
-  tm1637.set(BRIGHT_TYPICAL); //BRIGHT_TYPICAL = 2,BRIGHT_DARKEST = 0,BRIGHTEST = 7;
-  playFirstTime();
-  playFirstTime();
-  //回歸零
-  tm1637.display(0,-1); //-1 for blank
-  tm1637.display(1,-1); //-1 for blank
-  tm1637.display(2,-1); //-1 for blank
-  tm1637.display(3,0);
-     
-  //讀入脈衝
-  pinMode(TO_SIG, INPUT);  
-
   //讀入點火
-  pinMode(FIRE_SIG, INPUT);  
-}
-void playFirstTime()
-{
-  // 0000~9999 跑二次
-  for(int i=0;i<= 9;i++)
-  {
-    for(int j=0;j<4;j++)
-    {
-      tm1637.display(j,i);    
-    }
-    delay(100);  
-  }
-}
-
-void diaplayOnLed(int show_rpm)
-{
-  //將轉速，變成顯示值
-  //只顯示 萬千百十
-  //如果要顯示 千百十個，就不用除了
-  //太多數位有點眼花
-  String rpm_str = String(show_rpm/10);
-  if(rpm_str.length()<=3)
-  {
-    rpm_str = lpad(rpm_str,4,"X"); // 變成如 "XXX0"
-  }
-  Serial.print("\nAfter lpad:");
-  Serial.println(rpm_str);
-  for(int i=0;i<4;i++)
-  { 
-      if(rpm_str[i]=='X')
-      {
-        tm1637.display(i,-1); //-1 代表 blank 一片黑    
-      }
-      else
-      {
-        // Serial.println(rpm_str[i]);
-        // 腦包直接轉回 String 再把單字轉 int
-        // From : https://www.arduino.cc/en/Tutorial.StringToIntExample
-        tm1637.display(i,String(rpm_str[i]).toInt());    
-      }
-  }
-}
-String lpad(String temp , byte L , String theword){
-  //用來補LED左邊的空白
-  byte mylen = temp.length();
-  if(mylen > (L - 1))return temp.substring(0,L-1);
-  for (byte i=0; i< (L-mylen); i++) 
-    temp = theword + temp;
-  return temp;
-}
-
-boolean get_TO_PulseStatus(){
-  //取得脈衝訊號是否為高電位
-  return (digitalRead(TO_SIG)==HIGH);
-}
-boolean get_FIRE_PulseStatus(){
-  //取得點火是否為高電位
-  return (digitalRead(FIRE_SIG)==HIGH);
-}
-
-
-void loop() {
-  //首次一定要等到凸台開始才算開始
-  checkZeroCounts = 0;
-  while(!get_TO_PulseStatus()) {   //等待 Low，隔一次偵測，首次不管
-    //當轉速訊號消失一段時間後，轉速表也要歸零
-    checkZeroCounts++;
-    if(checkZeroCounts>= 600000){ //超時，低於50rpm
-      //直接輸出 0 
-      checkZeroCounts = 0;      
-      diaplayOnLed(checkZeroCounts);      
-      return;
-    }
-  };
-  checkZeroCounts = 0;
-  while(get_TO_PulseStatus()){ start = micros(); //凸台變正了，抓時間
-    //凸開變正了，開始計數    
-    while(!get_FIRE_PulseStatus()){ 
-      //一直等到點火發生
-      checkZeroCounts++;
-      if(checkZeroCounts>= 600000){ //超時，低於50rpm = 1200000 ,  1500rpm = 40000
-        //直接輸出 9999
-        checkZeroCounts = 9999;    
-        int show = (int)(map(checkZeroCounts,1500,16000,40000,3750) / 100);    
-        show=(show>9999)?9999:show;
-        diaplayOnLed(show);      
-        return;
-      }
-    }
-  }
+  pinMode(FIRE_SIG, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(FIRE_SIG), FIRE_SIG_FUNC, RISING);     
   
-  pulseCounts=micros()-start; //總算抓到一個 pulse 時間，用現在時間減去開始時間
-  /*
-   * 參考：http://stm32-learning.blogspot.com/2014/05/arduino.html   
-   * 轉速  1500 轉 = 每分鐘  1500 轉，每秒  25   轉，1轉多少秒呢，一轉 = 0.04       秒 =  40.000 ms =  40000us
-   * 轉速  6000 轉 = 每分鐘  6000 轉，每秒  60   轉，1轉多少秒呢，一轉 = 0.01666... 秒 =  16.667 ms =  16667us
-   * 轉速 14000 轉 = 每分鐘 14000 轉，每秒 233.3 轉，1轉多少秒呢，一轉 = 0.0042863. 秒 =   4.286 ms =   4286us
-   * 轉速 16000 轉 = 每分鐘 16000 轉，每秒 266.6 轉，1轉多少秒呢，一轉 = 0.0037500. 秒 =   3.750 ms =   3750us
-   */ 
+  //讀入脈衝
+  pinMode(TO_SIG, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(TO_SIG), TO_SIG_FUNC, RISING);     
 
-  //讓 LED 不要刷的太快，太快眼睛跟不上字會黏在一起
-  if (micros()-st > 55000) //550ms 眼睛才受的了
-  {       
-    int show = (int)(map(checkZeroCounts,1500,16000,40000,3750) / 100);    
-    show=(show>9999)?9999:show;
-    diaplayOnLed(show);          
-    //在 TM1637 顯示   
-    Serial.print("show: ");   
-    Serial.print(show);
-    Serial.println();   
-    st = micros(); 
-  }  
+
+
+  WiFi.begin(WLAN_SSID, WLAN_PASS);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+
+  Serial.println("WiFi connected");
+  Serial.println("IP address: "); 
+  Serial.println(WiFi.localIP());
+  COUNTS = micros();
+}
+
+void loop() {  
+  //每 100ms 送出一次結果就好~
+  if(micros() - COUNTS < 100) return;
+  //if(rpm==0) return;
+  //各種斷線自動重連
+  if (WiFi.status() != WL_CONNECTED) {    
+    Serial.print("\nReconnecting to WiFi...");
+    WiFi.disconnect();
+    WiFi.begin(WLAN_SSID, WLAN_PASS);         
+  }      
+  if(! mqtt.ping()) {
+    mqtt.disconnect();
+    MQTT_connect();
+  }    
+  COUNTS = micros();
+  
+  //送出資料
+  String data = String(rpm)+','+String(FIRE_DELAY)+','+String(FIRE_DEGREE);
+  char charBuf[30];
+  data.toCharArray(charBuf, 30);
+  mqtt_mycdicounter.publish(charBuf);
 }
