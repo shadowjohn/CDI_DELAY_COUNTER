@@ -1,7 +1,7 @@
-# 把 NSR 抓到凸台脈衝訊號(4P 裡的  青/黃)，到發現點火發生(4P 裡的 黑/黃) 的 轉速、fire_delay、角度，推到 mqtt 送去網頁看
-# Date : 2021-08-22
-# Author FB @田峻墉
-# Authro 羽山 (https://3wa.tw)
+// 把 NSR 抓到凸台脈衝訊號(4P 裡的  青/黃)，到發現點火發生(4P 裡的 黑/黃) 的 轉速、fire_delay、角度，推到 mqtt 送去網頁看
+// Date : 2021-08-22
+// Author FB @田峻墉
+// Authro 羽山 (https://3wa.tw)
 
 #include <ESP8266WiFi.h>
 #include "Adafruit_MQTT.h"
@@ -17,12 +17,12 @@ volatile float FIRE_DEGREE;
 /************************* WiFi Access Point *********************************/
 
 #define WLAN_SSID       "john"
-#define WLAN_PASS       "xxxxxxxxxxxxxxxxxxxxxxxx"
+#define WLAN_PASS       "0919566444"
 
 #define AIO_SERVER      "3wa.tw"
 #define AIO_SERVERPORT  1883                   // use 8883 for SSL
 #define AIO_USERNAME    "john"
-#define AIO_KEY         "xxxxxxxxxxxxxxxxxxxxxxxx"
+#define AIO_KEY         "123123123"
 WiFiClient client;
 Adafruit_MQTT_Client mqtt(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO_KEY);
 Adafruit_MQTT_Publish mqtt_mycdicounter = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/mycdicounter");
