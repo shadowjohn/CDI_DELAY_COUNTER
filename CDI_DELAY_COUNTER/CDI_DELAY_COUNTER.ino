@@ -7,22 +7,22 @@
 #include "Adafruit_MQTT.h"
 #include "Adafruit_MQTT_Client.h"
 //用來偵測 D1 腳點火訊號 (接 黑/黃) 
-//用來偵測 D3 腳抓脈衝凸台的訊號 (接 青/黃)
+//用來偵測 D2 腳抓脈衝凸台的訊號 (接 青/黃)
 
 const int FIRE_SIG = D1; //偵測點火
-const int TO_SIG = D3; //凸台，脈衝
+const int TO_SIG = D2; //凸台，脈衝
 volatile unsigned long C=0, rpm=0, RPM_DELAY=0, FIRE_DELAY=0, C_old=0;
 volatile unsigned long COUNTS = 0; //每隔 100ms 送一筆資料到 mqtt
 volatile float FIRE_DEGREE;
 /************************* WiFi Access Point *********************************/
 
-#define WLAN_SSID       "john"
-#define WLAN_PASS       "0919566444"
+#define WLAN_SSID       "xxxxx"
+#define WLAN_PASS       "xxxxxxxxxx"
 
 #define AIO_SERVER      "3wa.tw"
 #define AIO_SERVERPORT  1883                   // use 8883 for SSL
-#define AIO_USERNAME    "john"
-#define AIO_KEY         "123123123"
+#define AIO_USERNAME    "xxxxx"
+#define AIO_KEY         "xxxxxxxxxx"
 WiFiClient client;
 Adafruit_MQTT_Client mqtt(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO_KEY);
 Adafruit_MQTT_Publish mqtt_mycdicounter = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/mycdicounter");
